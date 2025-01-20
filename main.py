@@ -7,16 +7,26 @@ class M3UParser:
         self.input_file = input_file
         self.header = []
         self.channels = defaultdict(list)
-    def update_group_title(self, channel_info, new_group):
-        """Update the group-title in channel info with new group name"""
+        self.all_channels = []
+        # 定义URL源到显示名称的映射
+        self.source_names = {
+            'gaoma': '高码',
+            'bestzb': '百事通',
+            'ystenlive': '易视腾',
+            'wasusyt': '华数',
+            'foobar': '其他'
+        }
+    def update_group_title(self, channel_info, source_key):
+        """Update the group-title in channel info with display name"""
+        display_name = self.source_names[source_key]
         # Replace existing group-title if it exists
         if 'group-title="' in channel_info:
-            updated_info = re.sub(r'group-title="[^"]*"', f'group-title="{new_group}"', channel_info)
+            updated_info = re.sub(r'group-title="[^"]*"', f'group-title="{display_name}"', channel_info)
         else:
             # Add group-title if it doesn't exist (insert before the first double quote after #EXTINF)
             position = channel_info.find('"')
             if position != -1:
-                updated_info = channel_info[:position] + f'group-title="{new_group}" ' + channel_info[position:]
+                updated_info = channel_info[:position] + f'group-title="{display_name}" ' + channel_info[position:]
             else:
                 updated_info = channel_info  # Keep original if no quotes found
         return updated_info
@@ -35,19 +45,21 @@ class M3UParser:
                     channel_info = lines[i]
                     channel_url = lines[i + 1]
                     # Extract source from URL
-                    url_sources = ['gaoma', 'bestzb', 'ystenlive', 'wasusyt', 'gitv']
+                    url_sources = ['gaoma', 'bestzb', 'ystenlive', 'wasusyt']
                     source_found = False
                     for source in url_sources:
                         if source in channel_url:
                             # Update group-title before adding to channels
                             updated_info = self.update_group_title(channel_info, source)
                             self.channels[source].extend([updated_info, channel_url])
+                            self.all_channels.extend([updated_info, channel_url])
                             source_found = True
                             break
                     # If no source matched, add to foobar group
                     if not source_found:
                         updated_info = self.update_group_title(channel_info, "foobar")
                         self.channels["foobar"].extend([updated_info, channel_url])
+                        self.all_channels.extend([updated_info, channel_url])
                 i += 2
             else:
                 i += 1
@@ -55,6 +67,7 @@ class M3UParser:
     def write_group_files(self, output_dir):
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+        # Write individual group files
         for source, content in self.channels.items():
             if content:  # Only create file if there are channels in the source
                 output_file = output_dir / f'{source}.m3u'
@@ -63,6 +76,14 @@ class M3UParser:
                     f.writelines(self.header)
                     # Write channels
                     f.writelines(content)
+        # Write complete file with updated group-titles
+        if self.all_channels:
+            output_file = output_dir / 'all.m3u'
+            with open(output_file, 'w', encoding='utf-8') as f:
+                # Write header
+                f.writelines(self.header)
+                # Write all channels
+                f.writelines(self.all_channels)
 
 def main():
     # Create parser instance
